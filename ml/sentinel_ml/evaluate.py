@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from sentinel_ml.data.synthetic import SyntheticConfig, generate_rows
 from sentinel_ml.models.simple import HeuristicFraudModel
@@ -52,4 +51,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -20,7 +20,12 @@ jobs:
         working-directory: ${{ matrix.package }}
       - run: ruff check .
         working-directory: ${{ matrix.package }}
-      - run: mypy sentinel_ml || mypy app
+      - run: |
+          if [ -d sentinel_ml ]; then
+            mypy sentinel_ml
+          else
+            mypy app
+          fi
         working-directory: ${{ matrix.package }}
       - run: pytest
         working-directory: ${{ matrix.package }}
