@@ -32,7 +32,7 @@ mlruns/
 data/raw/
 data/processed/
 artifacts/
-models/
+/models/
 *.pkl
 *.joblib
 *.pt
