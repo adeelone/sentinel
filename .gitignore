@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environments and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+
+# Data, reports, artifacts
+reports/
+mlruns/
+data/raw/
+data/processed/
+artifacts/
+models/
+*.pkl
+*.joblib
+*.pt
+*.onnx
+minio-data/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

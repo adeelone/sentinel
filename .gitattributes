@@ -1,0 +1,13 @@
+* text=auto eol=lf
+package-lock.json linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.pkl binary
+*.joblib binary
+*.pt binary
+*.onnx binary
+
