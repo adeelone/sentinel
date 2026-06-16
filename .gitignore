@@ -44,3 +44,8 @@ minio-data/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local dev server runtime files
+*-dev.pid
+*-dev.out.log
+*-dev.err.log
