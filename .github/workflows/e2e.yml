@@ -1,0 +1,19 @@
+name: e2e
+
+on:
+  pull_request:
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+        working-directory: frontend
+      - run: npx playwright install --with-deps
+        working-directory: frontend
+      - run: npm run e2e
+        working-directory: frontend
