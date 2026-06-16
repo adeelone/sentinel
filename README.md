@@ -59,7 +59,7 @@ ml/          data generation, feature transforms, model adapters, evaluation, re
 backend/     FastAPI app, scoring, transactions, drift, jobs, auth, database models
 frontend/    React dashboard with overview, scoring, triage, models, drift, settings
 infra/       Docker Compose, service Dockerfiles, deployment stubs
-notebooks/   exploration placeholders
+notebooks/   empty notebooks reserved for exploratory work
 reports/     generated reports, ignored by Git
 ```
 
@@ -91,4 +91,3 @@ Implement `ExperimentTracker` in `ml/sentinel_ml/tracking/base.py`, add the prov
 - Graph models over merchant networks are future work.
 - Adversarial robustness tests are planned.
 - Multi-tenant SaaS mode is behind a future feature flag.
-

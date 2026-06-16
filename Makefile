@@ -1,9 +1,12 @@
-.PHONY: install data train evaluate report serve worker test lint format typecheck migrate seed clean
+.PHONY: install dev data train evaluate report serve worker test lint format typecheck migrate seed clean
 
 install:
 	cd ml && python -m pip install -e .[dev]
 	cd backend && python -m pip install -e .[dev]
 	cd frontend && npm install
+
+dev:
+	cd frontend && npm run dev
 
 data:
 	cd ml && python -m sentinel_ml.data.download
@@ -51,4 +54,3 @@ seed:
 
 clean:
 	git clean -xfd reports ml/.pytest_cache backend/.pytest_cache frontend/dist frontend/coverage
-
