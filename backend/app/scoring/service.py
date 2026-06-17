@@ -24,13 +24,20 @@ ACTIVE_MODEL = RuntimeModel()
 
 def score_transaction(payload: ScoreRequest) -> ScoreResponse:
     score = ACTIVE_MODEL.predict(payload)
-    contributions = [
-        Contribution(feature="V14", value=round(payload.V14 * 0.28, 6), direction="positive" if payload.V14 >= 0 else "negative"),
-        Contribution(feature="V10", value=round(payload.V10 * 0.22, 6), direction="positive" if payload.V10 >= 0 else "negative"),
-        Contribution(feature="V17", value=round(payload.V17 * 0.2, 6), direction="positive" if payload.V17 >= 0 else "negative"),
-        Contribution(feature="Amount", value=round(min(payload.Amount, 500) / 500 * 0.18, 6), direction="positive"),
-    ]
-    rationale = "High V14, unusual Amount, and past-midnight timing" if score >= ACTIVE_MODEL.threshold else "Below active operating threshold"
+    try:
+        contributions = [
+            Contribution(feature="V14", value=round(payload.V14 * 0.28, 6), direction="positive" if payload.V14 >= 0 else "negative"),
+            Contribution(feature="V10", value=round(payload.V10 * 0.22, 6), direction="positive" if payload.V10 >= 0 else "negative"),
+            Contribution(feature="V17", value=round(payload.V17 * 0.2, 6), direction="positive" if payload.V17 >= 0 else "negative"),
+            Contribution(feature="Amount", value=round(min(payload.Amount, 500) / 500 * 0.18, 6), direction="positive"),
+        ]
+    except Exception:
+        contributions = None
+    rationale = (
+        "High V14, unusual Amount, and past-midnight timing"
+        if score >= ACTIVE_MODEL.threshold
+        else "Below active operating threshold"
+    )
     return ScoreResponse(
         score=round(score, 6),
         label="flagged" if score >= ACTIVE_MODEL.threshold else "clear",
@@ -39,4 +46,3 @@ def score_transaction(payload: ScoreRequest) -> ScoreResponse:
         model_version=ACTIVE_MODEL.model_name,
         rationale=rationale,
     )
-

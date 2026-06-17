@@ -6,8 +6,8 @@ from pydantic import BaseModel
 class Settings(BaseModel):
     app_env: str = "local"
     admin_key_name: str = "x-admin-key"
+    admin_key: str = "change-me-local-only"
     public_rate_limit_per_minute: int = 120
 
 
 settings = Settings()
-

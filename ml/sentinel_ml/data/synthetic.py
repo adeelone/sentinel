@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 FEATURES = ["Time", "Amount", *[f"V{i}" for i in range(1, 29)], "merchant_bucket", "category_bucket"]
@@ -16,6 +19,48 @@ class SyntheticConfig:
     rows: int = 5000
     fraud_rate: float = 0.0017
     seed: int = 42
+
+
+class CreditCardRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    Time: float = Field(ge=0)
+    Amount: float = Field(ge=0)
+    merchant_bucket: int | None = Field(default=None, ge=0)
+    category_bucket: int | None = Field(default=None, ge=0)
+    Class: int = Field(ge=0, le=1)
+    V1: float
+    V2: float
+    V3: float
+    V4: float
+    V5: float
+    V6: float
+    V7: float
+    V8: float
+    V9: float
+    V10: float
+    V11: float
+    V12: float
+    V13: float
+    V14: float
+    V15: float
+    V16: float
+    V17: float
+    V18: float
+    V19: float
+    V20: float
+    V21: float
+    V22: float
+    V23: float
+    V24: float
+    V25: float
+    V26: float
+    V27: float
+    V28: float
+
+
+def validate_rows(rows: list[dict[str, float | int]]) -> list[CreditCardRow]:
+    return [CreditCardRow.model_validate(row) for row in rows]
 
 
 def generate_rows(config: SyntheticConfig = SyntheticConfig()) -> list[dict[str, float | int]]:
@@ -53,11 +98,18 @@ def fraud_ratio(rows: list[dict[str, float | int]]) -> float:
 
 
 def write_csv(path: Path, rows: list[dict[str, float | int]]) -> None:
+    validate_rows(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_HEADER)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def content_hash(rows: list[dict[str, float | int]]) -> str:
+    validate_rows(rows)
+    encoded = "\n".join(",".join(str(row[column]) for column in CSV_HEADER) for row in rows)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:16]
 
 
 def human_rationale(row: dict[str, float | int]) -> str:
@@ -69,4 +121,3 @@ def human_rationale(row: dict[str, float | int]) -> str:
     if float(row["V14"]) > 1.5:
         reasons.append("high V14")
     return ", ".join(reasons) or "no single dominant driver"
-

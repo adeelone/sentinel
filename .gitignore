@@ -1,9 +1,11 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 pytest-cache-files-*/
 .mypy_cache/
+.mypy-tmp-cache/
 .ruff_cache/
 .coverage*
 htmlcov/

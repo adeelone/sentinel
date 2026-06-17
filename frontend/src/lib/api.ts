@@ -27,3 +27,16 @@ export async function scoreTransaction(payload: ScoreRequest): Promise<ScoreResp
   }
 }
 
+export async function scoreBatch(rows: ScoreRequest[], explain = true): Promise<ScoreResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE}/score/batch?explain=${String(explain)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(rows)
+    });
+    if (!response.ok) throw new Error(`Batch score failed: ${response.status}`);
+    return await response.json();
+  } catch {
+    return Promise.all(rows.map((row) => scoreTransaction(row)));
+  }
+}
