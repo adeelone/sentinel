@@ -3,22 +3,37 @@ services:
     build:
       context: ../backend
     environment:
+      APP_ENV: docker
       DATABASE_URL: postgresql+psycopg://sentinel:sentinel@postgres:5432/sentinel
       REDIS_URL: redis://redis:6379/0
+      API_ADMIN_KEY: ${API_ADMIN_KEY:-change-me-local-only}
+      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
     ports:
       - "8000:8000"
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   ui:
     build:
       context: ../frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     ports:
-      - "5173:5173"
+      - "5173:8080"
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   postgres:
     image: postgres:16
     environment:
@@ -27,6 +42,8 @@ services:
       POSTGRES_DB: sentinel
     ports:
       - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
   redis:
     image: redis:7
     ports:
@@ -45,4 +62,9 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    volumes:
+      - minio-data:/data
 
+volumes:
+  postgres-data:
+  minio-data:

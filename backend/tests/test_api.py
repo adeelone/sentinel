@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 
 
@@ -29,7 +30,7 @@ def test_transactions_flow() -> None:
 def test_admin_endpoints_require_key() -> None:
     blocked = client.post("/retrain")
     assert blocked.status_code == 401
-    allowed = client.post("/retrain", headers={"x-admin-key": "change-me-local-only"})
+    allowed = client.post("/retrain", headers={settings.admin_key_name: settings.admin_key})
     assert allowed.status_code == 200
 
 
