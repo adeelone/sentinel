@@ -1,6 +1,6 @@
 # Requirements Audit
 
-Source: `C:\Users\adeem\Downloads\sentinel-codex-prompt.md`
+Source: `sentinel-codex-prompt.md`
 
 Date: 2026-06-17
 
@@ -164,4 +164,3 @@ Public repo: `https://github.com/adeelone/sentinel`
 | GitHub Actions | PASS | CI, e2e, and release workflows exist. |
 | Public GitHub publish | PASS | Repo is public at `https://github.com/adeelone/sentinel`. |
 | Branch protection, release, discussions, issues, social preview | PASS | Branch protection, releases, starter issues, announcement discussion, and `frontend/public/og.png` are present. |
-
