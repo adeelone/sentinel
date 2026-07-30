@@ -13,9 +13,10 @@ from app.core.rate_limit import RateLimiter
 from app.metrics.prometheus import render_metrics
 from app.scoring.service import ACTIVE_MODEL, score_transaction
 from app.schemas import ReviewRequest, ScoreRequest, ScoreResponse, TransactionRecord
+from app.transactions.store import TransactionStore
 
 router = APIRouter()
-TRANSACTIONS: dict[str, TransactionRecord] = {}
+STORE = TransactionStore(settings.database_path)
 PUBLIC_LIMITER = RateLimiter(settings.public_rate_limit_per_minute)
 
 
@@ -43,7 +44,8 @@ def score(payload: ScoreRequest) -> ScoreResponse:
         transaction=payload.model_dump(),
         contributions=response.contributions,
     )
-    TRANSACTIONS[record.id] = record
+    STORE.put(record)
+    response.transaction_id = record.id
     return response
 
 
@@ -64,7 +66,22 @@ async def score_batch(
             body = []
         rows = body.get("rows", body) if isinstance(body, dict) else body
         requests = [ScoreRequest.model_validate(row) for row in rows]
-    responses = [score_transaction(item) for item in requests]
+    responses = []
+    for item in requests:
+        response = score_transaction(item)
+        record = TransactionRecord(
+            id=str(uuid.uuid4()),
+            score=response.score,
+            label=response.label,
+            threshold=response.threshold,
+            status="new",
+            created_at=time.time(),
+            transaction=item.model_dump(),
+            contributions=response.contributions,
+        )
+        STORE.put(record)
+        response.transaction_id = record.id
+        responses.append(response)
     if not explain:
         for response in responses:
             response.contributions = None
@@ -100,38 +117,36 @@ def transactions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[TransactionRecord]:
-    records = sorted(TRANSACTIONS.values(), key=lambda item: item.created_at, reverse=True)
-    if status:
-        records = [record for record in records if record.status == status]
-    if label:
-        records = [record for record in records if record.label == label]
-    if min_score is not None:
-        records = [record for record in records if record.score >= min_score]
-    if max_score is not None:
-        records = [record for record in records if record.score <= max_score]
-    return records[offset : offset + limit]
+    return STORE.list(
+        status=status,
+        label=label,
+        min_score=min_score,
+        max_score=max_score,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/transactions/{transaction_id}")
 def transaction(transaction_id: str) -> TransactionRecord:
-    if transaction_id not in TRANSACTIONS:
+    record = STORE.get(transaction_id)
+    if record is None:
         raise HTTPException(status_code=404, detail="transaction not found")
-    return TRANSACTIONS[transaction_id]
+    return record
 
 
 @router.post("/transactions/{transaction_id}/review")
 def review(transaction_id: str, payload: ReviewRequest) -> TransactionRecord:
-    if transaction_id not in TRANSACTIONS:
+    record = STORE.review(transaction_id, payload.status, payload.note)
+    if record is None:
         raise HTTPException(status_code=404, detail="transaction not found")
-    record = TRANSACTIONS[transaction_id]
-    record.status = payload.status
-    record.note = payload.note
     return record
 
 
-@router.post("/retrain", dependencies=[Depends(require_admin)])
-def retrain() -> dict[str, str]:
-    return {"status": "queued"}
+@router.delete("/transactions/{transaction_id}", status_code=204)
+def delete_transaction(transaction_id: str) -> None:
+    if not STORE.delete(transaction_id):
+        raise HTTPException(status_code=404, detail="transaction not found")
 
 
 @router.get("/metrics", response_class=PlainTextResponse)

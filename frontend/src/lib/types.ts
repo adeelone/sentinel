@@ -19,5 +19,19 @@ export type ScoreResponse = {
   contributions: Contribution[] | null;
   model_version: string;
   rationale: string;
+  transaction_id: string | null;
 };
 
+export type ReviewStatus = "new" | "confirmed_fraud" | "not_fraud" | "needs_more_info" | "snoozed" | "watchlist";
+
+export type Transaction = {
+  id: string;
+  score: number;
+  label: string;
+  threshold: number;
+  status: ReviewStatus;
+  created_at: number;
+  transaction: Record<string, number>;
+  contributions: Contribution[] | null;
+  note: string | null;
+};

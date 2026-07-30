@@ -53,6 +53,7 @@ class ScoreResponse(BaseModel):
     contributions: list[Contribution] | None
     model_version: str
     rationale: str
+    transaction_id: str | None = None
 
 
 class TransactionRecord(BaseModel):
@@ -68,6 +69,5 @@ class TransactionRecord(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    status: Literal["confirmed_fraud", "not_fraud", "needs_more_info", "snoozed"]
+    status: Literal["confirmed_fraud", "not_fraud", "needs_more_info", "snoozed", "watchlist"]
     note: str = ""
-

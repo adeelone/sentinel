@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.core.config import settings
+from app.api.routes import PUBLIC_LIMITER
 from app.main import app
 
 
@@ -27,11 +27,8 @@ def test_transactions_flow() -> None:
     assert review.json()["status"] == "not_fraud"
 
 
-def test_admin_endpoints_require_key() -> None:
-    blocked = client.post("/retrain")
-    assert blocked.status_code == 401
-    allowed = client.post("/retrain", headers={settings.admin_key_name: settings.admin_key})
-    assert allowed.status_code == 200
+def test_fake_retrain_endpoint_is_not_exposed() -> None:
+    assert client.post("/retrain").status_code == 404
 
 
 def test_batch_and_filters() -> None:
@@ -57,3 +54,28 @@ def test_validation_errors_include_trace_id() -> None:
     response = client.post("/score", json={"Time": -1, "Amount": 10}, headers={"x-trace-id": "test-trace"})
     assert response.status_code == 422
     assert response.json()["trace_id"] == "test-trace"
+
+
+def test_review_is_persisted_and_transaction_can_be_deleted() -> None:
+    scored = client.post("/score", json={"Time": 400, "Amount": 88})
+    transaction_id = scored.json()["transaction_id"]
+    reviewed = client.post(
+        f"/transactions/{transaction_id}/review",
+        json={"status": "watchlist", "note": "check tomorrow"},
+    )
+    assert reviewed.json()["status"] == "watchlist"
+    assert client.get(f"/transactions/{transaction_id}").json()["note"] == "check tomorrow"
+    assert client.delete(f"/transactions/{transaction_id}").status_code == 204
+    assert client.get(f"/transactions/{transaction_id}").status_code == 404
+
+
+def test_rate_limiter_blocks_after_limit() -> None:
+    original_limit = PUBLIC_LIMITER.limit
+    PUBLIC_LIMITER.limit = 1
+    PUBLIC_LIMITER._hits.clear()
+    try:
+        assert client.post("/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}).status_code == 200
+        assert client.post("/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}).status_code == 429
+    finally:
+        PUBLIC_LIMITER.limit = original_limit
+        PUBLIC_LIMITER._hits.clear()

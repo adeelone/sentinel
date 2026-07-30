@@ -6,10 +6,8 @@ Models are registered behind a common adapter:
 
 - Logistic regression baseline with class weighting.
 - Random forest with capped depth.
-- XGBoost and LightGBM adapters with `scale_pos_weight`.
 - Isolation forest as an unsupervised baseline.
-- PyTorch autoencoder using reconstruction error.
-- Stacked ensemble with logistic regression meta-learner.
+
+XGBoost, LightGBM, a PyTorch autoencoder, and a stacked ensemble are tracked ideas, not implemented adapters.
 
 The CI smoke path uses the synthetic generator and lightweight adapters so tests stay fast.
-

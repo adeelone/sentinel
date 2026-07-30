@@ -39,6 +39,7 @@ artifacts/
 *.joblib
 *.pt
 *.onnx
+*.db
 minio-data/
 
 # OS/editor

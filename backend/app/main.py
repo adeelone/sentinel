@@ -9,13 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import router
+from app.core.config import settings
 from app.metrics.prometheus import METRICS
 
 
 app = FastAPI(title="Sentinel API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +33,12 @@ async def trace_requests(request: Request, call_next):
     elapsed_ms = (time.perf_counter() - started) * 1000
     METRICS.observe(request.url.path, response.status_code, elapsed_ms)
     response.headers["x-trace-id"] = trace_id
+    response.headers["x-content-type-options"] = "nosniff"
+    response.headers["x-frame-options"] = "DENY"
+    response.headers["referrer-policy"] = "no-referrer"
+    response.headers["content-security-policy"] = "default-src 'none'; frame-ancestors 'none'"
+    if settings.production:
+        response.headers["strict-transport-security"] = "max-age=31536000; includeSubDomains"
     return response
 
 

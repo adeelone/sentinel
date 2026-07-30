@@ -5,8 +5,7 @@ import { App } from "./App";
 describe("App", () => {
   it("renders dashboard sections", () => {
     render(<App />);
-    expect(screen.getByText("Fraud operations dashboard")).toBeTruthy();
-    expect(screen.getByText("Triage queue")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Score a transaction", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Review queue" })).toBeTruthy();
   });
 });
-

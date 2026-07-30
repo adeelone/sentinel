@@ -2,15 +2,15 @@
 
 Source: `sentinel-codex-prompt.md`
 
-Date: 2026-06-17
+Date: 2026-07-29
 
 This audit reflects the current implementation. Sentinel is now a working research/demo app with a real synthetic-data ML training path, API, dashboard, CI, release, and GitHub repo. It is still not certified for production fraud prevention.
 
 ## Summary
 
-- PASS: 47
-- PARTIAL: 18
-- FAIL: 14
+- PASS: 49
+- PARTIAL: 17
+- FAIL: 13
 
 Public repo: `https://github.com/adeelone/sentinel`
 
@@ -105,7 +105,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | `GET /transactions` paginated/filterable | PASS | Supports status, label, score range, limit, and offset. |
 | `GET /transactions/{id}` | PASS | Implemented. |
 | `POST /transactions/{id}/review` | PASS | Implemented in memory. |
-| `POST /retrain` background retrain | PARTIAL | Admin-gated endpoint returns queued; RQ worker is not wired. |
+| `POST /retrain` background retrain | FAIL | The fake queued response was removed. Retraining stays CLI-only until a worker exists. |
 | `GET /metrics` | PASS | Prometheus text includes request counts, latency percentiles, and model load count. |
 | `GET /healthz`, `GET /readyz` | PASS | Implemented. |
 | API key admin auth and rate limits | PASS | Admin key and in-memory per-key/IP rate limit are implemented. |
@@ -126,7 +126,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | Settings | PASS | FP/FN cost and threshold inputs exist. |
 | Mobile responsive | PASS | CSS includes responsive single-column layout. |
 | Light and dark themes | PASS | Theme toggle uses CSS variables. |
-| Skeletons and empty states | FAIL | Not implemented. |
+| Skeletons and empty states | PASS | Queue loading, empty scoring/explanation, and API error/retry states are implemented. |
 | Accessibility | PARTIAL | Semantic elements and ARIA label exist; full WCAG audit is not done. |
 | i18n English/Spanish | FAIL | Not implemented. |
 
@@ -137,7 +137,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | Fast single-row scoring | PARTIAL | Runtime model is fast, but no benchmark is committed. |
 | Async FastAPI and RQ jobs | PARTIAL | Batch endpoint is async; RQ jobs are not wired. |
 | Rate limiting | PASS | Scoring endpoints use an in-memory rate limiter. |
-| Model load caching | FAIL | No LRU model cache is implemented. |
+| Model load caching | PARTIAL | The current runtime model is initialized once per API process; versioned bundle caching is not implemented. |
 | Graceful explanation degradation | PASS | API returns predictions with `contributions: null` if contribution generation fails. |
 | Lighthouse targets | FAIL | Not measured. |
 
@@ -147,7 +147,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | --- | --- | --- |
 | No real cardholder data | PASS | No raw data is tracked; docs warn against it. |
 | Uploaded CSVs processed in memory | PASS | Batch CSVs are read from upload content and not persisted. |
-| Analyst labels in Postgres and delete-my-data | FAIL | Labels remain in memory; delete flow is missing. |
+| Analyst labels in Postgres and delete-my-data | PARTIAL | Reviews persist in SQLite and the UI/API delete individual records; Postgres and bulk deletion are not wired. |
 | API keys hashed at rest | FAIL | Demo admin key is env/config based; persistent key store is not implemented. |
 | Secrets via env vars | PARTIAL | `.env.example` exists; some demo defaults remain. |
 

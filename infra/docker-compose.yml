@@ -8,6 +8,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       API_ADMIN_KEY: ${API_ADMIN_KEY:-change-me-local-only}
       PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
+      SENTINEL_DB_PATH: /data/sentinel.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     ports:
       - "8000:8000"
     depends_on:
@@ -18,6 +20,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - api-data:/data
   ui:
     build:
       context: ../frontend
@@ -66,5 +70,6 @@ services:
       - minio-data:/data
 
 volumes:
+  api-data:
   postgres-data:
   minio-data:

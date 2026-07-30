@@ -2,290 +2,271 @@ import {
   Activity,
   BarChart3,
   BrainCircuit,
-  Check,
+  CheckCircle2,
   ClipboardCheck,
   Gauge,
+  LoaderCircle,
   Moon,
+  RefreshCw,
+  Search,
   Settings,
+  ShieldCheck,
   Sun,
+  Trash2,
   Upload
 } from "lucide-react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { scoreBatch, scoreTransaction } from "./lib/api";
-import type { ScoreRequest, ScoreResponse } from "./lib/types";
+import { useCallback, useEffect, useState } from "react";
+import { deleteTransaction, getTransactions, reviewTransaction, scoreBatch, scoreTransaction } from "./lib/api";
+import type { ReviewStatus, ScoreRequest, ScoreResponse, Transaction } from "./lib/types";
 
-const distribution = [
-  { bucket: "0-.2", count: 1880 },
-  { bucket: ".2-.4", count: 420 },
-  { bucket: ".4-.6", count: 118 },
-  { bucket: ".6-.8", count: 38 },
-  { bucket: ".8-1", count: 11 }
-];
-
-const drift = [
-  { hour: "00", psi: 0.04 },
-  { hour: "04", psi: 0.08 },
-  { hour: "08", psi: 0.05 },
-  { hour: "12", psi: 0.03 },
-  { hour: "16", psi: 0.06 },
-  { hour: "20", psi: 0.11 }
-];
-
-type TriageStatus = "new" | "confirmed_fraud" | "not_fraud" | "needs_more_info" | "snoozed" | "watchlist";
-
-type TriageItem = {
-  id: string;
-  score: number;
-  status: TriageStatus;
-  amount: number;
-  rationale: string;
-  note: string;
-};
-
-const initialQueue: TriageItem[] = [
-  { id: "tx_1042", score: 0.94, status: "new", amount: 842.1, rationale: "High V14 and unusual amount.", note: "" },
-  { id: "tx_1049", score: 0.88, status: "watchlist", amount: 391, rationale: "Past-midnight timing.", note: "" },
-  { id: "tx_1056", score: 0.81, status: "needs_more_info", amount: 221.77, rationale: "High V10 and V17.", note: "" }
+const models = [
+  { name: "Sentinel synthetic v0", state: "Active", prAuc: "0.81", recall: "0.78" },
+  { name: "Logistic regression", state: "Candidate", prAuc: "0.06", recall: "0.25" },
+  { name: "Random forest", state: "Candidate", prAuc: "0.04", recall: "0.00" }
 ];
 
 export function App() {
-  const [score, setScore] = useState<ScoreResponse | null>(null);
-  const [batchResults, setBatchResults] = useState<ScoreResponse[]>([]);
   const [amount, setAmount] = useState(249);
+  const [hour, setHour] = useState(22);
+  const [v10, setV10] = useState(1.8);
   const [v14, setV14] = useState(2.1);
-  const [queue, setQueue] = useState(initialQueue);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [v17, setV17] = useState(2);
+  const [score, setScore] = useState<ScoreResponse | null>(null);
+  const [queue, setQueue] = useState<Transaction[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [batchResults, setBatchResults] = useState<ScoreResponse[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loadingQueue, setLoadingQueue] = useState(true);
+  const [error, setError] = useState("");
   const [dark, setDark] = useState(false);
-  const [settingsState, setSettingsState] = useState({ fpCost: 1, fnCost: 25, threshold: 0.72 });
 
-  const selected = queue[selectedIndex] ?? queue[0];
-  const flaggedCount = queue.filter((item) => item.score >= settingsState.threshold).length;
-  const averageScore = queue.reduce((sum, item) => sum + item.score, 0) / Math.max(queue.length, 1);
+  const selected = queue.find((item) => item.id === selectedId) ?? queue[0];
+  const average = queue.reduce((total, item) => total + item.score, 0) / Math.max(queue.length, 1);
+  const flagged = queue.filter((item) => item.label === "flagged").length;
+
+  const loadQueue = useCallback(async () => {
+    setLoadingQueue(true);
+    try {
+      const records = await getTransactions();
+      setQueue(records);
+      setSelectedId((current) => current ?? records[0]?.id ?? null);
+      setError("");
+    } catch (caught) {
+      setError(message(caught, "Could not reach the scoring API."));
+    } finally {
+      setLoadingQueue(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
 
-  const updateSelected = useCallback(
-    (status: TriageStatus) => {
-      if (!selected) return;
-      setQueue((items) =>
-        items.map((item, index) =>
-          index === selectedIndex ? { ...item, status, note: status === "snoozed" ? "Snoozed from keyboard" : item.note } : item
-        )
-      );
-    },
-    [selected, selectedIndex]
-  );
-
-  const modelRows = useMemo(
-    () => [
-      { id: "sentinel-synthetic-v0", status: "Active", prAuc: "0.81", recall: "0.78", threshold: settingsState.threshold },
-      { id: "logistic-regression-synthetic", status: "Candidate", prAuc: "0.06", recall: "0.25", threshold: 0.96 },
-      { id: "random-forest-synthetic", status: "Candidate", prAuc: "0.04", recall: "0.00", threshold: 0.91 }
-    ],
-    [settingsState.threshold]
-  );
-
-  async function submitScore() {
-    const response = await scoreTransaction({ Time: 2_400, Amount: amount, V10: 1.8, V14: v14, V17: 2.0 });
-    setScore(response);
-    setQueue((items) => [
-      {
-        id: `tx_${Date.now()}`,
-        score: response.score,
-        status: "new",
-        amount,
-        rationale: response.rationale,
-        note: ""
-      },
-      ...items
-    ]);
-    setSelectedIndex(0);
-  }
-
-  async function handleCsv(file: File) {
-    const text = await file.text();
-    const rows = parseCsv(text);
-    setBatchResults(await scoreBatch(rows, false));
-  }
+  const review = useCallback(async (status: ReviewStatus) => {
+    if (!selected) return;
+    try {
+      const updated = await reviewTransaction(selected.id, status);
+      setQueue((items) => items.map((item) => item.id === updated.id ? updated : item));
+      setError("");
+    } catch (caught) {
+      setError(message(caught, "Review could not be saved."));
+    }
+  }, [selected]);
 
   useEffect(() => {
-    function handleKey(event: KeyboardEvent) {
+    function onKey(event: KeyboardEvent) {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (event.key === "j") setSelectedIndex((index) => Math.min(index + 1, queue.length - 1));
-      if (event.key === "k") setSelectedIndex((index) => Math.max(index - 1, 0));
-      if (event.key === "f") updateSelected("confirmed_fraud");
-      if (event.key === "n") updateSelected("not_fraud");
-      if (event.key === "s") updateSelected("snoozed");
+      const index = queue.findIndex((item) => item.id === selected?.id);
+      if (event.key === "j") setSelectedId(queue[Math.min(index + 1, queue.length - 1)]?.id ?? null);
+      if (event.key === "k") setSelectedId(queue[Math.max(index - 1, 0)]?.id ?? null);
+      if (event.key === "f") void review("confirmed_fraud");
+      if (event.key === "n") void review("not_fraud");
+      if (event.key === "s") void review("snoozed");
     }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [queue.length, updateSelected]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [queue, review, selected?.id]);
+
+  async function submitScore() {
+    setBusy(true);
+    try {
+      const result = await scoreTransaction({ Time: hour * 3600, Amount: amount, V10: v10, V14: v14, V17: v17 });
+      setScore(result);
+      await loadQueue();
+      setSelectedId(result.transaction_id);
+      setError("");
+    } catch (caught) {
+      setError(message(caught, "Transaction could not be scored."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadCsv(file: File) {
+    setBusy(true);
+    try {
+      setBatchResults(await scoreBatch(parseCsv(await file.text()), false));
+      await loadQueue();
+      setError("");
+    } catch (caught) {
+      setError(message(caught, "CSV could not be scored."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSelected() {
+    if (!selected) return;
+    try {
+      await deleteTransaction(selected.id);
+      setSelectedId(null);
+      await loadQueue();
+    } catch (caught) {
+      setError(message(caught, "Transaction could not be deleted."));
+    }
+  }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Sentinel</p>
-          <h1>Fraud operations dashboard</h1>
-        </div>
+    <div className="appShell">
+      <aside className="sidebar">
+        <a className="brand" href="#score" aria-label="Sentinel home"><ShieldCheck /> Sentinel</a>
         <nav aria-label="Primary navigation">
-          <a href="#overview"><Activity size={16} />Overview</a>
-          <a href="#score"><Upload size={16} />Score</a>
-          <a href="#triage"><ClipboardCheck size={16} />Triage</a>
-          <a href="#models"><BrainCircuit size={16} />Models</a>
-          <a href="#settings"><Settings size={16} />Settings</a>
-          <button type="button" aria-label="Toggle theme" onClick={() => setDark((value) => !value)}>
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <a href="#overview"><BarChart3 />Overview</a>
+          <a className="active" href="#score"><Gauge />Score</a>
+          <a href="#triage"><ClipboardCheck />Triage</a>
+          <a href="#models"><BrainCircuit />Models</a>
+          <a href="#drift"><Activity />Drift</a>
         </nav>
-      </header>
-
-      <section id="overview" className="grid metrics">
-        <Metric icon={<Gauge />} label="Active threshold" value={settingsState.threshold.toFixed(2)} detail="Cost-based operating point" />
-        <Metric icon={<BarChart3 />} label="Average queue score" value={averageScore.toFixed(2)} detail="Current analyst queue" />
-        <Metric icon={<Activity />} label="Flagged now" value={String(flaggedCount)} detail="Above threshold in queue" />
-      </section>
-
-      <section className="grid two">
-        <ChartPanel title="Score distribution">
-          <BarChart data={distribution}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="bucket" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="count" fill="#3366cc" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ChartPanel>
-        <ChartPanel title="Feature drift">
-          <AreaChart data={drift}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="hour" />
-            <YAxis />
-            <Tooltip />
-            <Area type="monotone" dataKey="psi" fill="#37a987" stroke="#1f7a63" />
-          </AreaChart>
-        </ChartPanel>
-      </section>
-
-      <section id="score" className="grid two">
-        <article className="panel">
-          <h2>Score a transaction</h2>
-          <label>Amount<input value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" /></label>
-          <label>V14<input value={v14} onChange={(event) => setV14(Number(event.target.value))} type="number" step="0.1" /></label>
-          <button onClick={submitScore}>Score transaction</button>
-          {score && <Explanation score={score} />}
-        </article>
-        <article className="panel">
-          <h2>Batch CSV</h2>
-          <label className="dropzone">
-            <Upload size={24} />
-            <span>Upload CSV with Time, Amount, V10, V14, V17</span>
-            <input className="fileInput" type="file" accept=".csv,text/csv" onChange={(event) => event.target.files?.[0] && handleCsv(event.target.files[0])} />
-          </label>
-          {batchResults.length > 0 && <ResultTable results={batchResults} />}
-        </article>
-      </section>
-
-      <section id="triage" className="panel">
-        <div className="sectionHeader">
-          <h2>Triage queue</h2>
-          <span>Keyboard: j/k move, f fraud, n not fraud, s snooze</span>
+        <div className="sideBottom">
+          <a href="#settings"><Settings />Settings</a>
+          <span>AR <small>Analyst</small></span>
         </div>
-        <table>
-          <thead><tr><th>ID</th><th>Score</th><th>Status</th><th>Amount</th><th>Action</th></tr></thead>
-          <tbody>
-            {queue.map((row, index) => (
-              <tr key={row.id} className={index === selectedIndex ? "selected" : ""} onClick={() => setSelectedIndex(index)}>
-                <td>{row.id}</td>
-                <td>{row.score.toFixed(3)}</td>
-                <td><span className="chip">{row.status.replaceAll("_", " ")}</span></td>
-                <td>${row.amount.toFixed(2)}</td>
-                <td>
-                  <button type="button" onClick={() => setSelectedIndex(index)}><Check size={14} />Open</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {selected && (
-          <div className="drawer">
-            <strong>{selected.id}</strong>
-            <p>{selected.rationale}</p>
-            <div className="buttonRow">
-              <button onClick={() => updateSelected("confirmed_fraud")}>Mark fraud</button>
-              <button onClick={() => updateSelected("not_fraud")}>Not fraud</button>
-              <button onClick={() => updateSelected("needs_more_info")}>More info</button>
-              <button onClick={() => updateSelected("snoozed")}>Snooze</button>
-              <button onClick={() => updateSelected("watchlist")}>Watchlist</button>
-            </div>
+      </aside>
+
+      <main>
+        <header className="topbar">
+          <div><h1>Score a transaction</h1><p>Review model output before making a decision.</p></div>
+          <div className="topActions">
+            <span>Research demo — synthetic data only</span>
+            <button className="iconButton" aria-label="Toggle theme" onClick={() => setDark((value) => !value)}>
+              {dark ? <Sun /> : <Moon />}
+            </button>
           </div>
-        )}
-      </section>
+        </header>
 
-      <section id="models" className="panel">
-        <h2>Models</h2>
-        <table>
-          <thead><tr><th>Version</th><th>Status</th><th>PR-AUC</th><th>Recall@P0.7</th><th>Threshold</th></tr></thead>
-          <tbody>{modelRows.map((row) => <tr key={row.id}><td>{row.id}</td><td>{row.status}</td><td>{row.prAuc}</td><td>{row.recall}</td><td>{row.threshold.toFixed(2)}</td></tr>)}</tbody>
-        </table>
-      </section>
+        {error && <div className="errorBanner" role="alert">{error}<button onClick={loadQueue}><RefreshCw />Retry</button></div>}
 
-      <section id="settings" className="panel settingsGrid">
-        <h2>Settings</h2>
-        <label>False-positive cost<input type="number" value={settingsState.fpCost} onChange={(event) => setSettingsState({ ...settingsState, fpCost: Number(event.target.value) })} /></label>
-        <label>False-negative cost<input type="number" value={settingsState.fnCost} onChange={(event) => setSettingsState({ ...settingsState, fnCost: Number(event.target.value) })} /></label>
-        <label>Default threshold<input type="number" min="0" max="1" step="0.01" value={settingsState.threshold} onChange={(event) => setSettingsState({ ...settingsState, threshold: Number(event.target.value) })} /></label>
-      </section>
+        <section id="score" className="scoreGrid">
+          <article className="surface formPanel">
+            <div className="sectionTitle"><h2>Score a transaction</h2><span>All fields use anonymized features.</span></div>
+            <div className="formGrid">
+              <Field label="Amount (USD)" value={amount} onChange={setAmount} />
+              <Field label="Transaction hour" value={hour} onChange={setHour} min={0} max={23} />
+              <Field label="V10" value={v10} onChange={setV10} step={0.1} />
+              <Field label="V14" value={v14} onChange={setV14} step={0.1} />
+              <Field label="V17" value={v17} onChange={setV17} step={0.1} />
+            </div>
+            <button className="primary" disabled={busy} onClick={submitScore}>
+              {busy ? <LoaderCircle className="spin" /> : <Search />} Score transaction
+            </button>
+            <label className="uploadButton"><Upload />Score a CSV<input type="file" accept=".csv,text/csv" onChange={(event) => event.target.files?.[0] && void uploadCsv(event.target.files[0])} /></label>
+            {batchResults.length > 0 && <small>{batchResults.length} CSV rows scored and added to the queue.</small>}
+          </article>
 
-      <footer>
-        Research / demo project. Not certified for production fraud prevention. No real cardholder data.
-      </footer>
-    </main>
-  );
-}
+          <article className="surface riskPanel">
+            <h2>Risk score</h2>
+            {score ? (
+              <>
+                <div className={`riskRing ${score.label}`} style={{ "--score": `${score.score * 360}deg` } as React.CSSProperties}>
+                  <div><strong>{score.score.toFixed(2)}</strong><span>{score.label === "flagged" ? "High risk" : "Below threshold"}</span></div>
+                </div>
+                <p>Threshold {score.threshold.toFixed(2)} · {score.model_version}</p>
+              </>
+            ) : <Empty icon={<Gauge />} text="Score a transaction to see its risk." />}
+          </article>
 
-function parseCsv(text: string): ScoreRequest[] {
-  const [headerLine, ...lines] = text.trim().split(/\r?\n/);
-  const headers = headerLine.split(",").map((header) => header.trim());
-  return lines.filter(Boolean).map((line) => {
-    const values = line.split(",").map((value) => Number(value.trim()));
-    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? 0]));
-    return {
-      Time: Number(row.Time ?? 0),
-      Amount: Number(row.Amount ?? 0),
-      V10: Number(row.V10 ?? 0),
-      V14: Number(row.V14 ?? 0),
-      V17: Number(row.V17 ?? 0)
-    };
-  });
-}
+          <article className="surface reasonPanel">
+            <h2>Why this was flagged</h2>
+            {score ? <><p>{score.rationale}</p><ContributionList score={score} /></> : <Empty icon={<Activity />} text="The explanation will show the strongest model contributions." />}
+          </article>
+        </section>
 
-function Metric({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }) {
-  return <article className="metric">{icon}<span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
-}
+        <section id="overview" className="summaryRow">
+          <Summary label="Queue size" value={String(queue.length)} detail="stored reviews" />
+          <Summary label="Flagged" value={String(flagged)} detail="above model threshold" />
+          <Summary label="Average risk" value={average.toFixed(2)} detail="current queue" />
+          <Summary label="Drift PSI" value="0.11" detail="stable synthetic baseline" />
+        </section>
 
-function ChartPanel({ title, children }: { title: string; children: ReactElement }) {
-  return <article className="panel"><h2>{title}</h2><ResponsiveContainer width="100%" height={230}>{children}</ResponsiveContainer></article>;
-}
+        <section id="triage" className="contentGrid">
+          <article className="surface queuePanel">
+            <div className="sectionTitle"><div><h2>Review queue</h2><span>j/k move · f fraud · n not fraud · s snooze</span></div><button className="quiet" onClick={loadQueue}><RefreshCw />Refresh</button></div>
+            {loadingQueue ? <div className="loadingRows"><i /><i /><i /></div> : queue.length === 0 ? (
+              <Empty icon={<ClipboardCheck />} text="No transactions yet. Score one above to start the queue." />
+            ) : (
+              <div className="tableWrap"><table><thead><tr><th>Risk</th><th>Amount</th><th>Time</th><th>Status</th><th>Reason</th></tr></thead>
+                <tbody>{queue.map((item) => <tr key={item.id} className={selected?.id === item.id ? "selected" : ""} onClick={() => setSelectedId(item.id)}>
+                  <td><strong className={item.label}>{item.score.toFixed(2)}</strong></td>
+                  <td>${Number(item.transaction.Amount ?? 0).toFixed(2)}</td>
+                  <td>{new Date(item.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                  <td>{item.status.replaceAll("_", " ")}</td>
+                  <td>{item.contributions?.[0]?.feature ?? "Model score"}</td>
+                </tr>)}</tbody>
+              </table></div>
+            )}
+            {selected && <div className="reviewBar"><div><strong>{selected.id.slice(0, 8)}</strong><span>{selected.note || "Choose an analyst outcome."}</span></div>
+              <div><button onClick={() => review("confirmed_fraud")}>Fraud</button><button onClick={() => review("not_fraud")}>Not fraud</button><button onClick={() => review("needs_more_info")}>More info</button><button onClick={() => review("snoozed")}>Snooze</button><button className="danger" aria-label="Delete transaction" onClick={removeSelected}><Trash2 /></button></div>
+            </div>}
+          </article>
 
-function Explanation({ score }: { score: ScoreResponse }) {
-  return (
-    <div className="explanation">
-      <div><strong>{score.label}</strong><span>{score.score.toFixed(3)} at threshold {score.threshold}</span></div>
-      <p>{score.rationale}</p>
-      <ul>{score.contributions?.map((item) => <li key={item.feature}>{item.feature}: {item.value.toFixed(3)} {item.direction}</li>)}</ul>
+          <aside className="rightRail">
+            <article id="models" className="surface compact"><div className="sectionTitle"><h2>Models</h2><span className="healthy"><CheckCircle2 />Healthy</span></div>
+              {models.map((model) => <div className="modelRow" key={model.name}><div><strong>{model.name}</strong><span>{model.state}</span></div><span>PR-AUC {model.prAuc}</span></div>)}
+            </article>
+            <article id="drift" className="surface compact"><div className="sectionTitle"><h2>Drift</h2><span className="healthy">Stable</span></div>
+              <div className="driftLine"><span>Amount</span><i style={{ width: "42%" }} /><strong>0.11</strong></div>
+              <div className="driftLine"><span>Hour</span><i style={{ width: "24%" }} /><strong>0.06</strong></div>
+              <div className="driftLine"><span>V14</span><i style={{ width: "35%" }} /><strong>0.09</strong></div>
+            </article>
+          </aside>
+        </section>
+
+        <footer>Research / demo project. Not certified for production fraud prevention. No real cardholder data.</footer>
+      </main>
     </div>
   );
 }
 
-function ResultTable({ results }: { results: ScoreResponse[] }) {
-  return (
-    <table>
-      <thead><tr><th>#</th><th>Score</th><th>Label</th><th>Model</th></tr></thead>
-      <tbody>{results.map((row, index) => <tr key={`${row.model_version}-${index}`}><td>{index + 1}</td><td>{row.score.toFixed(3)}</td><td>{row.label}</td><td>{row.model_version}</td></tr>)}</tbody>
-    </table>
-  );
+function Field({ label, value, onChange, min, max, step = 1 }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {
+  return <label>{label}<input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+}
+
+function Summary({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <article><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
+}
+
+function ContributionList({ score }: { score: ScoreResponse }) {
+  const max = Math.max(...(score.contributions?.map((item) => Math.abs(item.value)) ?? [1]), 0.01);
+  return <ul className="contributions">{score.contributions?.map((item) => <li key={item.feature}><div><strong>{item.feature}</strong><span>{item.value > 0 ? "+" : ""}{item.value.toFixed(3)}</span></div><i><b style={{ width: `${Math.abs(item.value) / max * 100}%` }} /></i></li>)}</ul>;
+}
+
+function Empty({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return <div className="empty">{icon}<p>{text}</p></div>;
+}
+
+function parseCsv(text: string): ScoreRequest[] {
+  const [headerLine = "", ...lines] = text.trim().split(/\r?\n/);
+  const headers = headerLine.split(",").map((header) => header.trim());
+  return lines.filter(Boolean).map((line) => {
+    const row = Object.fromEntries(headers.map((header, index) => [header, Number(line.split(",")[index]?.trim() ?? 0)]));
+    return { Time: row.Time ?? 0, Amount: row.Amount ?? 0, V10: row.V10 ?? 0, V14: row.V14 ?? 0, V17: row.V17 ?? 0 };
+  });
+}
+
+function message(error: unknown, fallback: string): string {
+  return error instanceof Error ? `${fallback} ${error.message}` : fallback;
 }
