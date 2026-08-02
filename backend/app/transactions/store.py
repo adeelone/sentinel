@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import (
@@ -17,6 +18,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import make_url
 
 from app.schemas import TransactionRecord
 
@@ -40,6 +42,9 @@ class TransactionStore:
     def __init__(self, database_url: str) -> None:
         options: dict[str, Any] = {"pool_pre_ping": True}
         if database_url.startswith("sqlite"):
+            database = make_url(database_url).database
+            if database and database != ":memory:":
+                Path(database).parent.mkdir(parents=True, exist_ok=True)
             options["connect_args"] = {"check_same_thread": False}
         self.engine: Engine = create_engine(database_url, **options)
         metadata.create_all(self.engine)
