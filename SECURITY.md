@@ -6,4 +6,6 @@ Secrets must be supplied through environment variables or a managed secret store
 
 Production startup fails if `API_ADMIN_KEY` is left at the local placeholder. Set `CORS_ORIGINS` to the exact frontend origin. The API sends a restrictive CSP, frame denial, MIME-sniffing protection, and HSTS in production.
 
+Production also refuses to start without Postgres, Redis, and a trained model bundle. Postgres, Redis, the worker, and the artifact bucket stay private on the deployment platform. Bucket credentials and the admin key are injected as sealed service variables.
+
 Public scoring routes are rate-limited in process. That is enough for this single-instance demo, but a multi-instance deployment needs a shared limiter such as Redis.

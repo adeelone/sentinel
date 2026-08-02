@@ -16,14 +16,8 @@ import {
   Upload
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { deleteTransaction, getTransactions, reviewTransaction, scoreBatch, scoreTransaction } from "./lib/api";
-import type { ReviewStatus, ScoreRequest, ScoreResponse, Transaction } from "./lib/types";
-
-const models = [
-  { name: "Sentinel synthetic v0", state: "Active", prAuc: "0.81", recall: "0.78" },
-  { name: "Logistic regression", state: "Candidate", prAuc: "0.06", recall: "0.25" },
-  { name: "Random forest", state: "Candidate", prAuc: "0.04", recall: "0.00" }
-];
+import { deleteTransaction, getDrift, getModels, getTransactions, reviewTransaction, scoreBatch, scoreTransaction } from "./lib/api";
+import type { DriftInfo, ModelInfo, ReviewStatus, ScoreRequest, ScoreResponse, Transaction } from "./lib/types";
 
 export function App() {
   const [amount, setAmount] = useState(249);
@@ -39,6 +33,8 @@ export function App() {
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [error, setError] = useState("");
   const [dark, setDark] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [drift, setDrift] = useState<DriftInfo | null>(null);
 
   const selected = queue.find((item) => item.id === selectedId) ?? queue[0];
   const average = queue.reduce((total, item) => total + item.score, 0) / Math.max(queue.length, 1);
@@ -47,8 +43,10 @@ export function App() {
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
     try {
-      const records = await getTransactions();
+      const [records, modelData, driftData] = await Promise.all([getTransactions(), getModels(), getDrift()]);
       setQueue(records);
+      setModels(modelData);
+      setDrift(driftData);
       setSelectedId((current) => current ?? records[0]?.id ?? null);
       setError("");
     } catch (caught) {
@@ -199,7 +197,7 @@ export function App() {
           <Summary label="Queue size" value={String(queue.length)} detail="stored reviews" />
           <Summary label="Flagged" value={String(flagged)} detail="above model threshold" />
           <Summary label="Average risk" value={average.toFixed(2)} detail="current queue" />
-          <Summary label="Drift PSI" value="0.11" detail="stable synthetic baseline" />
+          <Summary label="Drift samples" value={String(drift?.sample_size ?? 0)} detail={drift?.status ?? "loading"} />
         </section>
 
         <section id="triage" className="contentGrid">
@@ -225,12 +223,10 @@ export function App() {
 
           <aside className="rightRail">
             <article id="models" className="surface compact"><div className="sectionTitle"><h2>Models</h2><span className="healthy"><CheckCircle2 />Healthy</span></div>
-              {models.map((model) => <div className="modelRow" key={model.name}><div><strong>{model.name}</strong><span>{model.state}</span></div><span>PR-AUC {model.prAuc}</span></div>)}
+              {models.length === 0 ? <Empty icon={<BrainCircuit />} text="No model metadata available." /> : models.map((model) => <div className="modelRow" key={model.id}><div><strong>{model.id}</strong><span>{model.active ? "Active" : "Candidate"}</span></div><span>PR-AUC {Number(model.metrics.pr_auc ?? 0).toFixed(3)}</span></div>)}
             </article>
             <article id="drift" className="surface compact"><div className="sectionTitle"><h2>Drift</h2><span className="healthy">Stable</span></div>
-              <div className="driftLine"><span>Amount</span><i style={{ width: "42%" }} /><strong>0.11</strong></div>
-              <div className="driftLine"><span>Hour</span><i style={{ width: "24%" }} /><strong>0.06</strong></div>
-              <div className="driftLine"><span>V14</span><i style={{ width: "35%" }} /><strong>0.09</strong></div>
+              {(drift?.score_histogram ?? []).map((count, index) => <div className="driftLine" key={index}><span>{index / 10}-{(index + 1) / 10}</span><i style={{ width: `${Math.min(100, count * 4)}%` }} /><strong>{count}</strong></div>)}
             </article>
           </aside>
         </section>

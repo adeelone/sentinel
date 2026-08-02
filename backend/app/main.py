@@ -6,12 +6,12 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.routes import router
 from app.core.config import settings
 from app.metrics.prometheus import METRICS
-
+from app.scoring.service import ACTIVE_MODEL
 
 app = FastAPI(title="Sentinel API", version="0.1.0")
 app.add_middleware(
@@ -43,7 +43,9 @@ async def trace_requests(request: Request, call_next):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     return JSONResponse(
         status_code=422,
         content={
@@ -59,6 +61,10 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/readyz")
-def readyz() -> dict[str, str]:
-    return {"status": "ready"}
+@app.get("/readyz", response_model=None)
+def readyz() -> Response | dict[str, str]:
+    if settings.production and not ACTIVE_MODEL.using_bundle:
+        return JSONResponse(
+            status_code=503, content={"status": "not_ready", "reason": "model bundle unavailable"}
+        )
+    return {"status": "ready", "model": ACTIVE_MODEL.model_name}

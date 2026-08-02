@@ -17,5 +17,5 @@ This pass focused on the path a reviewer can finish in a few minutes: score a sy
 ## Deliberately not done
 
 - The optional XGBoost, LightGBM, PyTorch autoencoder, ensemble, SHAP, MLflow, MinIO, and RQ work is not faked here. The existing sklearn training pipeline remains the honest implemented boundary.
-- Postgres is still provisioned in Compose but the zero-setup API now uses SQLite. A hosted deployment must mount the database path on persistent storage.
-- i18n, Lighthouse scoring, and a public full-stack deployment still need a separate deployment/account pass.
+- SQLite remains the local zero-setup path. Production uses Postgres with an Alembic-managed schema.
+- i18n, Lighthouse scoring, and the live Railway account connection remain external follow-up work.

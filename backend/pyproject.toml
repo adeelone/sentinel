@@ -8,6 +8,14 @@ dependencies = [
   "uvicorn>=0.30",
   "pydantic>=2.8",
   "python-multipart>=0.0.9",
+  "sqlalchemy>=2.0,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "redis>=6,<7",
+  "joblib>=1.4",
+  "numpy>=1.26",
+  "scikit-learn>=1.5",
+  "boto3>=1.35,<2",
+  "alembic>=1.14,<2",
 ]
 
 [project.optional-dependencies]
@@ -22,3 +30,6 @@ dev = [
 [build-system]
 requires = ["setuptools>=72"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

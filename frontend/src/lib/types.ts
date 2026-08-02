@@ -35,3 +35,14 @@ export type Transaction = {
   contributions: Contribution[] | null;
   note: string | null;
 };
+
+export type ModelInfo = {
+  id: string;
+  active: boolean;
+  threshold: number;
+  metrics: Record<string, number>;
+  run_id: string;
+  bundle_loaded: boolean;
+};
+
+export type DriftInfo = { score_histogram: number[]; sample_size: number; status: string };

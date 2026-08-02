@@ -1,64 +1,63 @@
 from __future__ import annotations
 
-import json
-import sqlite3
-from pathlib import Path
+import builtins
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Float,
+    MetaData,
+    String,
+    Table,
+    Column,
+    create_engine,
+    delete,
+    insert,
+    select,
+    update,
+)
+from sqlalchemy.engine import Engine
 
 from app.schemas import TransactionRecord
 
+metadata = MetaData()
+transactions = Table(
+    "transactions",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("score", Float, nullable=False, index=True),
+    Column("label", String(24), nullable=False, index=True),
+    Column("threshold", Float, nullable=False),
+    Column("status", String(32), nullable=False, index=True),
+    Column("created_at", Float, nullable=False, index=True),
+    Column("transaction", JSON, nullable=False),
+    Column("contributions", JSON),
+    Column("note", String(2000)),
+)
+
 
 class TransactionStore:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS transactions (
-                    id TEXT PRIMARY KEY,
-                    score REAL NOT NULL,
-                    label TEXT NOT NULL,
-                    threshold REAL NOT NULL,
-                    status TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    transaction_json TEXT NOT NULL,
-                    contributions_json TEXT,
-                    note TEXT
-                )
-                """
-            )
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        return connection
+    def __init__(self, database_url: str) -> None:
+        options: dict[str, Any] = {"pool_pre_ping": True}
+        if database_url.startswith("sqlite"):
+            options["connect_args"] = {"check_same_thread": False}
+        self.engine: Engine = create_engine(database_url, **options)
+        metadata.create_all(self.engine)
 
     def put(self, record: TransactionRecord) -> None:
         payload = record.model_dump(mode="json")
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO transactions
-                (id, score, label, threshold, status, created_at, transaction_json, contributions_json, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record.id,
-                    record.score,
-                    record.label,
-                    record.threshold,
-                    record.status,
-                    record.created_at,
-                    json.dumps(payload["transaction"]),
-                    json.dumps(payload["contributions"]) if payload["contributions"] is not None else None,
-                    record.note,
-                ),
-            )
+        with self.engine.begin() as connection:
+            connection.execute(delete(transactions).where(transactions.c.id == record.id))
+            connection.execute(insert(transactions).values(**payload))
 
     def get(self, record_id: str) -> TransactionRecord | None:
-        with self._connect() as connection:
-            row = connection.execute("SELECT * FROM transactions WHERE id = ?", (record_id,)).fetchone()
-        return self._record(row) if row else None
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(select(transactions).where(transactions.c.id == record_id))
+                .mappings()
+                .first()
+            )
+        return TransactionRecord.model_validate(dict(row)) if row else None
 
     def list(
         self,
@@ -70,50 +69,38 @@ class TransactionStore:
         limit: int = 50,
         offset: int = 0,
     ) -> list[TransactionRecord]:
-        clauses: list[str] = []
-        values: list[object] = []
-        for column, value in (("status", status), ("label", label)):
-            if value is not None:
-                clauses.append(f"{column} = ?")
-                values.append(value)
+        query = select(transactions)
+        if status is not None:
+            query = query.where(transactions.c.status == status)
+        if label is not None:
+            query = query.where(transactions.c.label == label)
         if min_score is not None:
-            clauses.append("score >= ?")
-            values.append(min_score)
+            query = query.where(transactions.c.score >= min_score)
         if max_score is not None:
-            clauses.append("score <= ?")
-            values.append(max_score)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        values.extend([limit, offset])
-        with self._connect() as connection:
-            rows = connection.execute(
-                f"SELECT * FROM transactions {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                values,
-            ).fetchall()
-        return [self._record(row) for row in rows]
+            query = query.where(transactions.c.score <= max_score)
+        query = query.order_by(transactions.c.created_at.desc()).limit(limit).offset(offset)
+        with self.engine.connect() as connection:
+            rows = connection.execute(query).mappings().all()
+        return [TransactionRecord.model_validate(dict(row)) for row in rows]
 
     def review(self, record_id: str, status: str, note: str) -> TransactionRecord | None:
-        with self._connect() as connection:
+        with self.engine.begin() as connection:
             result = connection.execute(
-                "UPDATE transactions SET status = ?, note = ? WHERE id = ?",
-                (status, note, record_id),
+                update(transactions)
+                .where(transactions.c.id == record_id)
+                .values(status=status, note=note)
             )
         return self.get(record_id) if result.rowcount else None
 
     def delete(self, record_id: str) -> bool:
-        with self._connect() as connection:
-            result = connection.execute("DELETE FROM transactions WHERE id = ?", (record_id,))
+        with self.engine.begin() as connection:
+            result = connection.execute(delete(transactions).where(transactions.c.id == record_id))
         return result.rowcount > 0
 
-    @staticmethod
-    def _record(row: sqlite3.Row) -> TransactionRecord:
-        return TransactionRecord(
-            id=row["id"],
-            score=row["score"],
-            label=row["label"],
-            threshold=row["threshold"],
-            status=row["status"],
-            created_at=row["created_at"],
-            transaction=json.loads(row["transaction_json"]),
-            contributions=json.loads(row["contributions_json"]) if row["contributions_json"] else None,
-            note=row["note"],
-        )
+    def score_histogram(self) -> builtins.list[int]:
+        buckets = [0] * 10
+        with self.engine.connect() as connection:
+            scores = connection.execute(select(transactions.c.score)).scalars().all()
+        for score in scores:
+            buckets[min(int(float(score) * 10), 9)] += 1
+        return buckets

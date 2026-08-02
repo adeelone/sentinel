@@ -1,75 +1,80 @@
 services:
   api:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: infra/deploy/Dockerfile.api
     environment:
-      APP_ENV: docker
+      APP_ENV: production
       DATABASE_URL: postgresql+psycopg://sentinel:sentinel@postgres:5432/sentinel
       REDIS_URL: redis://redis:6379/0
-      API_ADMIN_KEY: ${API_ADMIN_KEY:-change-me-local-only}
-      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
-      SENTINEL_DB_PATH: /data/sentinel.db
+      API_ADMIN_KEY: ${API_ADMIN_KEY:?set API_ADMIN_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
-    ports:
-      - "8000:8000"
+      MODEL_BUNDLE_PATH: /app/artifacts/model_bundle.joblib
+      ARTIFACT_BUCKET: ${ARTIFACT_BUCKET:-sentinel-artifacts}
+      ARTIFACT_ENDPOINT: http://minio:9000
+      ARTIFACT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      ARTIFACT_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      ARTIFACT_REGION: us-east-1
+      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
+    ports: ["8000:8000"]
     depends_on:
-      - postgres
-      - redis
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    volumes:
-      - api-data:/data
+      retries: 10
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/deploy/Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@postgres:5432/sentinel
+      REDIS_URL: redis://redis:6379/0
+      MODEL_BUNDLE_PATH: /tmp/sentinel/model_bundle.joblib
+      ARTIFACT_BUCKET: ${ARTIFACT_BUCKET:-sentinel-artifacts}
+      ARTIFACT_ENDPOINT: http://minio:9000
+      ARTIFACT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      ARTIFACT_SECRET_KEY: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+    depends_on:
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
   ui:
     build:
       context: ../frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
-    environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
-    ports:
-      - "5173:8080"
-    depends_on:
-      - api
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    ports: ["5173:8080"]
+    depends_on: [api]
   postgres:
     image: postgres:16
     environment:
       POSTGRES_USER: sentinel
-      POSTGRES_PASSWORD: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: sentinel
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.2
-    command: mlflow server --host 0.0.0.0 --port 5000
-    ports:
-      - "5000:5000"
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   minio:
     image: minio/minio
-    command: server /data --console-address ":9001"
+    command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio-data:/data
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+    volumes: ["minio-data:/data"]
+    ports: ["9001:9001"]
 
 volumes:
-  api-data:
   postgres-data:
   minio-data:

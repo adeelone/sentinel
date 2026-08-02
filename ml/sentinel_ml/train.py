@@ -16,11 +16,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="synthetic")
     parser.add_argument("--models", default="logistic_regression,random_forest,isolation_forest")
+    parser.add_argument("--output-dir")
     args = parser.parse_args()
     rows = generate_rows(SyntheticConfig(rows=8000)) if args.dataset == "synthetic" else []
     run_id = uuid.uuid4().hex[:12]
     root = Path(__file__).resolve().parents[2]
-    report_dir = root / "reports" / run_id
+    report_dir = Path(args.output_dir) if args.output_dir else root / "reports" / run_id
     report_dir.mkdir(parents=True, exist_ok=True)
     result = evaluate(rows, [name.strip() for name in args.models.split(",") if name.strip()])
     registry = available_models()
@@ -36,6 +37,11 @@ def main() -> None:
         },
         bundle_path,
     )
+    if args.output_dir:
+        # A stable filename lets the API swap in a newly trained bundle atomically.
+        stable_path = report_dir / "model_bundle.joblib"
+        if bundle_path != stable_path:
+            bundle_path.replace(stable_path)
     (report_dir / "metrics.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     best = result["models"][best_name]  # type: ignore[index]
     (report_dir / "report.md").write_text(

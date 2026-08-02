@@ -8,9 +8,9 @@ This audit reflects the current implementation. Sentinel is now a working resear
 
 ## Summary
 
-- PASS: 49
-- PARTIAL: 17
-- FAIL: 13
+- PASS: 54
+- PARTIAL: 13
+- FAIL: 12
 
 Public repo: `https://github.com/adeelone/sentinel`
 
@@ -33,7 +33,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | Explainability first | PARTIAL | API and dashboard show feature contributions; true SHAP values are not implemented. |
 | Calm, premium UX | PASS | Dashboard uses restrained operational layout, tables, charts, and theme controls. |
 | Pluggable models/transforms/datasets | PARTIAL | Registry and sklearn adapters exist; heavy adapters are not all implemented. |
-| Self-contained Docker demo | PARTIAL | Compose includes API, UI, Postgres, Redis, MLflow, and MinIO; seeded artifact handoff is limited. |
+| Self-contained Docker demo | PASS | Compose runs the UI, trained-bundle API, worker, Postgres, Redis, and MinIO artifact storage. |
 
 ## Data Layer
 
@@ -105,7 +105,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | `GET /transactions` paginated/filterable | PASS | Supports status, label, score range, limit, and offset. |
 | `GET /transactions/{id}` | PASS | Implemented. |
 | `POST /transactions/{id}/review` | PASS | Implemented in memory. |
-| `POST /retrain` background retrain | FAIL | The fake queued response was removed. Retraining stays CLI-only until a worker exists. |
+| `POST /retrain` background retrain | PASS | Admin-gated jobs are queued in Redis, processed by the worker, uploaded to artifact storage, and exposed through job status. |
 | `GET /metrics` | PASS | Prometheus text includes request counts, latency percentiles, and model load count. |
 | `GET /healthz`, `GET /readyz` | PASS | Implemented. |
 | API key admin auth and rate limits | PASS | Admin key and in-memory per-key/IP rate limit are implemented. |
@@ -137,7 +137,7 @@ Public repo: `https://github.com/adeelone/sentinel`
 | Fast single-row scoring | PARTIAL | Runtime model is fast, but no benchmark is committed. |
 | Async FastAPI and RQ jobs | PARTIAL | Batch endpoint is async; RQ jobs are not wired. |
 | Rate limiting | PASS | Scoring endpoints use an in-memory rate limiter. |
-| Model load caching | PARTIAL | The current runtime model is initialized once per API process; versioned bundle caching is not implemented. |
+| Model load caching | PASS | The versioned bundle is cached per process and atomically refreshed from artifact storage on a bounded interval. |
 | Graceful explanation degradation | PASS | API returns predictions with `contributions: null` if contribution generation fails. |
 | Lighthouse targets | FAIL | Not measured. |
 
@@ -147,9 +147,9 @@ Public repo: `https://github.com/adeelone/sentinel`
 | --- | --- | --- |
 | No real cardholder data | PASS | No raw data is tracked; docs warn against it. |
 | Uploaded CSVs processed in memory | PASS | Batch CSVs are read from upload content and not persisted. |
-| Analyst labels in Postgres and delete-my-data | PARTIAL | Reviews persist in SQLite and the UI/API delete individual records; Postgres and bulk deletion are not wired. |
+| Analyst labels in Postgres and delete-my-data | PASS | SQLAlchemy persists reviews in Postgres in production, Alembic owns the schema, and the UI/API delete individual records. |
 | API keys hashed at rest | FAIL | Demo admin key is env/config based; persistent key store is not implemented. |
-| Secrets via env vars | PARTIAL | `.env.example` exists; some demo defaults remain. |
+| Secrets via env vars | PASS | Production rejects placeholder admin keys and receives database, Redis, and artifact credentials only through service variables. |
 
 ## Tooling, Docs, GitHub
 

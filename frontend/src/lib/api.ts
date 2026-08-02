@@ -1,4 +1,4 @@
-import type { ReviewStatus, ScoreRequest, ScoreResponse, Transaction } from "./types";
+import type { DriftInfo, ModelInfo, ReviewStatus, ScoreRequest, ScoreResponse, Transaction } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -42,4 +42,12 @@ export function reviewTransaction(id: string, status: ReviewStatus, note = ""): 
 
 export function deleteTransaction(id: string): Promise<void> {
   return request(`/transactions/${id}`, { method: "DELETE" });
+}
+
+export function getModels(): Promise<ModelInfo[]> {
+  return request("/models");
+}
+
+export function getDrift(): Promise<DriftInfo> {
+  return request("/drift");
 }

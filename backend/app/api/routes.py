@@ -11,16 +11,19 @@ from fastapi.responses import PlainTextResponse
 from app.core.config import settings
 from app.core.rate_limit import RateLimiter
 from app.metrics.prometheus import render_metrics
+from app.jobs.queue import enqueue_retrain, job_status
 from app.scoring.service import ACTIVE_MODEL, score_transaction
 from app.schemas import ReviewRequest, ScoreRequest, ScoreResponse, TransactionRecord
 from app.transactions.store import TransactionStore
 
 router = APIRouter()
-STORE = TransactionStore(settings.database_path)
+STORE = TransactionStore(settings.database_url)
 PUBLIC_LIMITER = RateLimiter(settings.public_rate_limit_per_minute)
 
 
-def require_admin(x_admin_key: str | None = Header(default=None)) -> None:
+def require_admin(
+    x_admin_key: str | None = Header(default=None, alias=settings.admin_key_name)
+) -> None:
     if x_admin_key != settings.admin_key:
         raise HTTPException(status_code=401, detail="admin api key required")
 
@@ -95,8 +98,9 @@ def models() -> list[dict[str, object]]:
             "id": ACTIVE_MODEL.model_name,
             "active": True,
             "threshold": ACTIVE_MODEL.threshold,
-            "metrics": {"pr_auc_proxy": 0.81, "recall_at_precision_0_7": 0.78},
-            "trained_at": "2026-06-16T00:00:00Z",
+            "metrics": ACTIVE_MODEL.metrics,
+            "run_id": ACTIVE_MODEL.run_id,
+            "bundle_loaded": ACTIVE_MODEL.using_bundle,
         }
     ]
 
@@ -147,6 +151,36 @@ def review(transaction_id: str, payload: ReviewRequest) -> TransactionRecord:
 def delete_transaction(transaction_id: str) -> None:
     if not STORE.delete(transaction_id):
         raise HTTPException(status_code=404, detail="transaction not found")
+
+
+@router.get("/drift")
+def drift() -> dict[str, object]:
+    histogram = STORE.score_histogram()
+    total = sum(histogram)
+    return {
+        "score_histogram": histogram,
+        "sample_size": total,
+        "status": "collecting" if total < 100 else "ready",
+    }
+
+
+@router.post("/retrain", dependencies=[Depends(require_admin)], status_code=202)
+def retrain() -> dict[str, str]:
+    try:
+        return {"status": "queued", "job_id": enqueue_retrain()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/jobs/{job_id}", dependencies=[Depends(require_admin)])
+def retrain_status(job_id: str) -> dict[str, str]:
+    try:
+        status = job_status(job_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if status is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return status
 
 
 @router.get("/metrics", response_class=PlainTextResponse)

@@ -58,7 +58,7 @@ uvicorn app.main:app --reload
 - Synthetic data is the default path so CI and local demos do not require a Kaggle account.
 - Accuracy is intentionally not a primary metric. The dashboard and reports lead with PR-AUC, recall at fixed precision, cost-weighted loss, and threshold confusion matrices.
 - Logistic regression, random forest, and isolation forest are implemented as sklearn model adapters. XGBoost, LightGBM, PyTorch autoencoder, stacked ensemble, and true SHAP remain tracked production gaps in `docs/REQUIREMENTS_AUDIT.md`.
-- Scored rows and analyst reviews are saved to SQLite by default. Set `SENTINEL_DB_PATH` to put the database on a persistent disk.
+- Scored rows and analyst reviews use SQLite locally and Postgres in production.
 
 ## Repository Layout
 
@@ -89,7 +89,7 @@ Implement `ExperimentTracker` in `ml/sentinel_ml/tracking/base.py`, add the prov
 ## Deployment
 
 - Fly.io: use `infra/deploy/fly.toml`, set Postgres, Redis, MinIO, OAuth, and admin-key secrets.
-- Railway: use `infra/deploy/railway.json`, attach a persistent volume, set `SENTINEL_DB_PATH` to that mount, and set `CORS_ORIGINS` to the frontend URL.
+- Railway: follow `docs/RAILWAY_DEPLOYMENT.md`. Production uses the web app, API, worker, Postgres, Redis, and a private artifact bucket.
 - VPS: run Docker Compose behind Caddy or nginx with TLS, nightly backups, and rotated API keys.
 - GitHub Pages: `.github/workflows/pages.yml` builds and deploys the frontend. It is a static demo unless `VITE_API_BASE_URL` points to a deployed API.
 
@@ -100,6 +100,6 @@ Implement `ExperimentTracker` in `ml/sentinel_ml/tracking/base.py`, add the prov
 - Graph models over merchant networks are future work.
 - Adversarial robustness tests are planned.
 - Multi-tenant SaaS mode is behind a future feature flag.
-- The API uses a small rule-based runtime model for the instant demo. `make train` produces the real sklearn bundles and reports, but model-bundle activation is not wired into the API yet.
-- Retraining is a command-line operation. There is no `/retrain` button or endpoint because the old endpoint claimed to queue work without a worker.
+- The API falls back to a small local scorer only when no bundle exists in development. Production refuses to start without the trained sklearn bundle included in its image.
+- Production retraining runs through Redis and a worker, writes the new versioned bundle to the artifact bucket, and is picked up by the API within one minute.
 - XGBoost, LightGBM, a PyTorch autoencoder, stacked ensembles, true SHAP, and MLflow/MinIO artifact storage are still research work, not shipped features.

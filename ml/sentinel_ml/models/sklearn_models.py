@@ -9,7 +9,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
 
-
 FEATURE_COLUMNS = ["Time", "Amount", *[f"V{i}" for i in range(1, 29)]]
 
 
@@ -19,11 +18,15 @@ class FraudEstimator(Protocol):
     def fit(self, rows: list[dict[str, float | int]]) -> "FraudEstimator": ...
     def predict_scores(self, rows: list[dict[str, float | int]]) -> list[float]: ...
     def metadata(self) -> dict[str, str | float]: ...
-    def contributions(self, row: dict[str, float | int], top_n: int = 5) -> list[dict[str, float | str]]: ...
+    def contributions(
+        self, row: dict[str, float | int], top_n: int = 5
+    ) -> list[dict[str, float | str]]: ...
 
 
 def matrix_from_rows(rows: list[dict[str, float | int]]) -> np.ndarray:
-    return np.array([[float(row[column]) for column in FEATURE_COLUMNS] for row in rows], dtype=float)
+    return np.array(
+        [[float(row[column]) for column in FEATURE_COLUMNS] for row in rows], dtype=float
+    )
 
 
 def labels_from_rows(rows: list[dict[str, float | int]]) -> np.ndarray:
@@ -46,14 +49,17 @@ class SklearnClassifierModel:
     def metadata(self) -> dict[str, str | float]:
         return {"name": self.model_name, "type": "sklearn_classifier"}
 
-    def contributions(self, row: dict[str, float | int], top_n: int = 5) -> list[dict[str, float | str]]:
+    def contributions(
+        self, row: dict[str, float | int], top_n: int = 5
+    ) -> list[dict[str, float | str]]:
         model = self.estimator.named_steps["model"]
-        values = np.array([float(row[column]) for column in FEATURE_COLUMNS], dtype=float)
+        matrix = matrix_from_rows([row])
+        transformed = self.estimator[:-1].transform(matrix)[0]
         if hasattr(model, "coef_"):
             weights = model.coef_[0]
-            raw = dict(zip(FEATURE_COLUMNS, values * weights, strict=True))
+            raw = dict(zip(FEATURE_COLUMNS, transformed * weights, strict=True))
         elif hasattr(model, "feature_importances_"):
-            raw = dict(zip(FEATURE_COLUMNS, values * model.feature_importances_, strict=True))
+            raw = dict(zip(FEATURE_COLUMNS, transformed * model.feature_importances_, strict=True))
         else:
             raw = {}
         ordered = sorted(raw.items(), key=lambda item: abs(item[1]), reverse=True)[:top_n]
@@ -94,7 +100,9 @@ class IsolationForestModel:
     def metadata(self) -> dict[str, str | float]:
         return {"name": self.model_name, "type": "sklearn_unsupervised"}
 
-    def contributions(self, row: dict[str, float | int], top_n: int = 5) -> list[dict[str, float | str]]:
+    def contributions(
+        self, row: dict[str, float | int], top_n: int = 5
+    ) -> list[dict[str, float | str]]:
         values = {column: float(row[column]) for column in FEATURE_COLUMNS}
         ordered = sorted(values.items(), key=lambda item: abs(item[1]), reverse=True)[:top_n]
         return [

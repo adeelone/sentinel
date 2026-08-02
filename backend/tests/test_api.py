@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
 from app.api.routes import PUBLIC_LIMITER
+from app.core.config import settings
 from app.main import app
-
 
 client = TestClient(app)
 
@@ -22,13 +22,18 @@ def test_transactions_flow() -> None:
     feed = client.get("/transactions").json()
     assert feed
     transaction_id = feed[0]["id"]
-    review = client.post(f"/transactions/{transaction_id}/review", json={"status": "not_fraud", "note": "demo"})
+    review = client.post(
+        f"/transactions/{transaction_id}/review", json={"status": "not_fraud", "note": "demo"}
+    )
     assert review.status_code == 200
     assert review.json()["status"] == "not_fraud"
 
 
-def test_fake_retrain_endpoint_is_not_exposed() -> None:
-    assert client.post("/retrain").status_code == 404
+def test_retrain_is_admin_gated_and_needs_redis() -> None:
+    assert client.post("/retrain").status_code == 401
+    response = client.post("/retrain", headers={settings.admin_key_name: settings.admin_key})
+    assert response.status_code == 503
+    assert "Redis" in response.json()["detail"]
 
 
 def test_batch_and_filters() -> None:
@@ -51,7 +56,9 @@ def test_batch_and_filters() -> None:
 
 
 def test_validation_errors_include_trace_id() -> None:
-    response = client.post("/score", json={"Time": -1, "Amount": 10}, headers={"x-trace-id": "test-trace"})
+    response = client.post(
+        "/score", json={"Time": -1, "Amount": 10}, headers={"x-trace-id": "test-trace"}
+    )
     assert response.status_code == 422
     assert response.json()["trace_id"] == "test-trace"
 
@@ -74,8 +81,18 @@ def test_rate_limiter_blocks_after_limit() -> None:
     PUBLIC_LIMITER.limit = 1
     PUBLIC_LIMITER._hits.clear()
     try:
-        assert client.post("/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}).status_code == 200
-        assert client.post("/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}).status_code == 429
+        assert (
+            client.post(
+                "/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/score", json={"Time": 1, "Amount": 1}, headers={"x-api-key": "limited"}
+            ).status_code
+            == 429
+        )
     finally:
         PUBLIC_LIMITER.limit = original_limit
         PUBLIC_LIMITER._hits.clear()
