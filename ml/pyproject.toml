@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.0", "ruff==0.15.17", "black==26.5.1", "mypy==1.11.2"]
+dev = ["pytest==9.1.0", "ruff==0.16.6", "black==26.5.1", "mypy==1.11.2"]
 
 [tool.mypy]
 python_version = "3.12"
